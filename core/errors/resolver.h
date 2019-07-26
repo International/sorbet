@@ -53,6 +53,8 @@ constexpr ErrorClass GenericClassWithoutTypeArgs{5045, StrictLevel::False};
 constexpr ErrorClass GenericClassWithoutTypeArgsStdlib{5046, StrictLevel::Strict};
 constexpr ErrorClass FinalAncestor{5047, StrictLevel::True};
 constexpr ErrorClass FinalModuleNonFinalMethod{5048, StrictLevel::True};
+// TODO(jez) The above two errors should be StrictLevel::False
+constexpr ErrorClass SealedAncestor{5048, StrictLevel::False};
 } // namespace sorbet::core::errors::Resolver
 
 #endif

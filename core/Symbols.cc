@@ -818,6 +818,49 @@ SymbolRef Symbol::topAttachedClass(const GlobalState &gs) const {
     return classSymbol;
 }
 
+void Symbol::recordSealedSubclass(MutableContext ctx, SymbolRef subclass) {
+    ENFORCE(this->isClassSealed(), "Class is not marked sealed: {}", this->show(ctx));
+    ENFORCE(subclass.exists(), "Can't record sealed subclass for {} when subclass doesn't exist", this->show(ctx));
+    ENFORCE(subclass.data(ctx)->isClass(), "Sealed subclass {} must be class", subclass.show(ctx));
+
+    auto classOfSubclass = subclass.data(ctx)->singletonClass(ctx);
+    auto sealedClassesList =
+        this->lookupSingletonClass(ctx).data(ctx)->findMember(ctx, core::Names::sealedClassesList());
+
+    auto data = sealedClassesList.data(ctx);
+    ENFORCE(data->resultType != nullptr, "Should have been filled into empty TupleType in namer");
+    auto tupleType = cast_type<TupleType>(data->resultType.get());
+    ENFORCE(tupleType != nullptr, "sealedClassesList should always be TupleType");
+    tupleType->elems.emplace_back(make_type<ClassType>(classOfSubclass));
+}
+
+TypePtr Symbol::sealedSubclasses(const Context ctx) const {
+    ENFORCE(this->isClassSealed(), "Class is not marked sealed: {}", this->show(ctx));
+
+    auto sealedClassesList =
+        this->lookupSingletonClass(ctx).data(ctx)->findMember(ctx, core::Names::sealedClassesList());
+
+    auto data = sealedClassesList.data(ctx);
+    ENFORCE(data->resultType != nullptr, "Should have been filled into empty TupleType in namer");
+    auto tupleType = cast_type<TupleType>(data->resultType.get());
+    ENFORCE(tupleType != nullptr, "sealedClassesList should always be TupleType");
+
+    if (tupleType->elems.empty()) {
+        // Declared sealed parent class, but never saw any children.
+        return make_type<ClassType>(this->ref(ctx));
+    }
+
+    auto result = Types::bottom();
+    for (const auto &elem : tupleType->elems) {
+        auto classType = cast_type<ClassType>(elem.get());
+        ENFORCE(classType != nullptr, "Something in sealedClassesList that's not a ClassType");
+        auto subclass = classType->symbol.data(ctx)->attachedClass(ctx);
+        ENFORCE(subclass.exists());
+        result = Types::any(ctx, result, make_type<ClassType>(subclass));
+    }
+    return result;
+}
+
 SymbolRef Symbol::dealias(const GlobalState &gs, int depthLimit) const {
     if (auto alias = cast_type<AliasType>(resultType.get())) {
         if (depthLimit == 0) {

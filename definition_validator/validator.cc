@@ -262,6 +262,45 @@ void validateFinal(const core::GlobalState &gs, const core::SymbolRef klass,
     validateFinalMethodHelper(gs, singleton, klass);
 }
 
+void validateSealedAncestorHelper(const core::GlobalState &gs, const core::SymbolRef klass,
+                                  const unique_ptr<ast::ClassDef> &classDef, const core::SymbolRef errMsgClass,
+                                  const string_view verb) {
+    auto klassFile = klass.data(gs)->loc().file();
+    for (const auto &mixin : klass.data(gs)->mixins()) {
+        if (!mixin.data(gs)->isClassSealed()) {
+            continue;
+        }
+        if (mixin.data(gs)->loc().file() == klassFile) {
+            // TODO(jez) Handle RBI files / multiple locs
+            continue;
+        }
+        if (auto e = gs.beginError(getAncestorLoc(gs, classDef, mixin), core::errors::Resolver::SealedAncestor)) {
+            e.setHeader("`{}` was declared as sealed and cannot be {} in `{}`", mixin.data(gs)->show(gs), verb,
+                        errMsgClass.data(gs)->show(gs));
+            e.addErrorLine(mixin.data(gs)->loc(), "Can only be {} in this file where `{}` is defined", verb,
+                           mixin.data(gs)->show(gs));
+        }
+    }
+}
+
+void validateSealed(const core::GlobalState &gs, const core::SymbolRef klass,
+                    const unique_ptr<ast::ClassDef> &classDef) {
+    const auto superClass = klass.data(gs)->superClass();
+    if (superClass.exists() && superClass.data(gs)->isClassSealed() &&
+        superClass.data(gs)->loc().file() != klass.data(gs)->loc().file()) {
+        // TODO(jez) Handle RBI files / multiple locs
+        if (auto e = gs.beginError(getAncestorLoc(gs, classDef, superClass), core::errors::Resolver::SealedAncestor)) {
+            e.setHeader("`{}` was declared as sealed and cannot be inherited by `{}`", superClass.data(gs)->show(gs),
+                        klass.data(gs)->show(gs));
+            e.addErrorLine(superClass.data(gs)->loc(), "Can only be inherited in this file where `{}` is defined",
+                           superClass.data(gs)->show(gs));
+        }
+    }
+    validateSealedAncestorHelper(gs, klass, classDef, klass, "included");
+    const auto singleton = klass.data(gs)->lookupSingletonClass(gs);
+    validateSealedAncestorHelper(gs, singleton, classDef, klass, "extended");
+}
+
 class ValidateWalk {
 private:
     UnorderedMap<core::SymbolRef, vector<core::SymbolRef>> abstractCache;
@@ -357,6 +396,7 @@ public:
         validateAbstract(ctx.state, sym);
         validateAbstract(ctx.state, singleton);
         validateFinal(ctx.state, sym, classDef);
+        validateSealed(ctx.state, sym, classDef);
         return classDef;
     }
 

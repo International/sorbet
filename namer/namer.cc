@@ -269,6 +269,21 @@ public:
             klass->symbol.data(ctx)->setClassFinal();
             klass->symbol.data(ctx)->singletonClass(ctx).data(ctx)->setClassFinal();
         }
+        if (send->fun == core::Names::declareSealed()) {
+            auto classOfKlass = klass->symbol.data(ctx)->singletonClass(ctx);
+            klass->symbol.data(ctx)->setClassSealed();
+            classOfKlass.data(ctx)->setClassSealed();
+
+            auto sealedClassesList =
+                ctx.state.enterMethodSymbol(send->loc, classOfKlass, core::Names::sealedClassesList());
+            auto &blkArg =
+                ctx.state.enterMethodArgumentSymbol(core::Loc::none(), sealedClassesList, core::Names::blkArg());
+            blkArg.flags.isBlock = true;
+
+            auto underlying = core::Types::arrayOf(ctx, core::make_type<core::ClassType>(classOfKlass));
+            vector<core::TypePtr> elems;
+            sealedClassesList.data(ctx)->resultType = core::make_type<core::TupleType>(underlying, elems);
+        }
         if (send->fun == core::Names::declareInterface() || send->fun == core::Names::declareAbstract()) {
             klass->symbol.data(ctx)->setClassAbstract();
             klass->symbol.data(ctx)->singletonClass(ctx).data(ctx)->setClassAbstract();
